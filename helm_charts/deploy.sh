@@ -491,43 +491,34 @@ main() {
         print_info "Skipping Logstash deployment"
     fi
 
-    # Fleet Server requires manual Kibana configuration first
-    echo ""
-    echo -e "${YELLOW}========================================${NC}"
-    echo -e "${YELLOW}Fleet Server Setup${NC}"
-    echo -e "${YELLOW}========================================${NC}"
-    echo ""
-    echo -e "${BLUE}Fleet Server requires manual configuration in Kibana before deployment.${NC}"
-    echo ""
-    echo "Please follow these steps:"
-    echo "  1. Access Kibana UI (see instructions below)"
-    echo "  2. Configure Fleet settings in Kibana"
-    echo "  3. Create Fleet Server policy"
-    echo "  4. Then deploy Fleet Server separately"
-    echo ""
-    echo "For detailed instructions, see:"
-    echo -e "  ${YELLOW}docs/FLEET_SETUP.md${NC}"
-    echo ""
-    read -p "Do you want to deploy Fleet Server now? (NOT RECOMMENDED - Configure Kibana first) (y/n): " deploy_fleet
-    if [[ "$deploy_fleet" =~ ^[Yy]$ ]]; then
-        print_warning "Deploying Fleet Server without Kibana configuration may result in startup issues"
-        deploy_fleet_server
-        wait_for_ready "fleet-server"
-    else
-        print_info "Skipping Fleet Server deployment - configure Kibana first, then run:"
-        echo -e "  ${YELLOW}helm install fleet-server ./fleet-server --namespace elastic${NC}"
-    fi
-
     # Display final status
     display_status
     display_access_instructions
 
-    print_info "Deployment complete!"
+    # Fleet Server deployment instructions
     echo ""
-    echo -e "${GREEN}Next Steps:${NC}"
-    echo "  1. Configure Fleet in Kibana (see docs/FLEET_SETUP.md)"
-    echo "  2. Deploy Fleet Server after Kibana configuration"
-    echo "  3. Enroll Elastic Agents to Fleet Server"
+    echo -e "${YELLOW}========================================${NC}"
+    echo -e "${YELLOW}Fleet Server Setup (Optional)${NC}"
+    echo -e "${YELLOW}========================================${NC}"
+    echo ""
+    echo -e "${BLUE}Fleet Server deployment and configuration is handled separately.${NC}"
+    echo ""
+    echo "To deploy and configure Fleet Server:"
+    echo ""
+    echo "  1. Wait for Kibana to be fully ready (check above access instructions)"
+    echo ""
+    echo "  2. Run the Fleet setup script:"
+    echo -e "     ${YELLOW}cd ../deployment_infrastructure${NC}"
+    echo -e "     ${YELLOW}./setup-fleet.sh${NC}"
+    echo ""
+    echo "  This script will:"
+    echo "    • Configure Fleet in Kibana via API"
+    echo "    • Deploy Fleet Server Helm chart"
+    echo "    • Wait for Fleet Server to be ready"
+    echo "    • Provide Fleet UI URL"
+    echo ""
+
+    print_info "Deployment complete!"
 }
 
 # Run main
