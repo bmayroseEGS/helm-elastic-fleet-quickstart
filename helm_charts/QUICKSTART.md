@@ -2,7 +2,7 @@
 
 ## Prerequisites Checklist
 
-- [ ] Local registry running with Elastic Stack images loaded (Elasticsearch, Kibana, Logstash)
+- [ ] Local registry running with Elastic Stack images loaded (Elasticsearch, Kibana, Logstash, Fleet Server)
 - [ ] Kubernetes cluster accessible via kubectl
 - [ ] Helm 3.x installed
 - [ ] kubectl configured and cluster reachable
@@ -18,6 +18,7 @@ The script will interactively prompt you to deploy:
 - Elasticsearch (y/n)
 - Kibana (y/n)
 - Logstash (y/n)
+- Fleet Server (y/n)
 
 That's it! The script handles everything.
 
@@ -54,6 +55,12 @@ helm install kibana ./kibana \
 
 # Install Logstash
 helm install logstash ./logstash \
+  --namespace elastic \
+  --wait \
+  --timeout 5m
+
+# Install Fleet Server
+helm install fleet-server ./fleet-server \
   --namespace elastic \
   --wait \
   --timeout 5m
@@ -97,6 +104,18 @@ curl -X POST http://localhost:8080 \
   -d '{"message":"test"}'
 ```
 
+**Fleet Server:**
+```bash
+# Port-forward
+kubectl port-forward -n elastic svc/fleet-server 8220:8220
+
+# Check status
+curl http://localhost:8220/api/status
+
+# Access Fleet through Kibana UI
+# Navigate to Management > Fleet
+```
+
 ## Common Commands
 
 ### Check Status
@@ -120,11 +139,12 @@ helm upgrade elasticsearch ./elasticsearch \
 ### Uninstall
 ```bash
 # Uninstall all components
-helm uninstall elasticsearch kibana logstash -n elastic
+helm uninstall elasticsearch kibana logstash fleet-server -n elastic
 
 # Optional: delete data
 kubectl delete pvc -n elastic -l app=elasticsearch
 kubectl delete pvc -n elastic -l app=logstash
+kubectl delete pvc -n elastic -l app=fleet-server
 ```
 
 ## Configuration Quick Changes

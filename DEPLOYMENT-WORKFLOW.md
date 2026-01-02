@@ -1,6 +1,6 @@
 # Complete Air-gapped Elastic Stack Deployment Workflow
 
-This guide shows the complete workflow from collecting images to deploying the full Elastic Stack (Elasticsearch, Kibana, and Logstash) on Kubernetes in an air-gapped environment.
+This guide shows the complete workflow from collecting images to deploying the full Elastic Stack (Elasticsearch, Kibana, Logstash, and Fleet Server) on Kubernetes in an air-gapped environment.
 
 ## Architecture Overview
 
@@ -27,6 +27,7 @@ PHASE 1: Image Collection (Internet-connected Machine)
 │  │  - elasticsearch-9.2.2.tar                   │          │
 │  │  - kibana-9.2.2.tar                          │          │
 │  │  - logstash-9.2.2.tar                        │          │
+│  │  - elastic-agent-9.2.3.tar                   │          │
 │  │  - registry-2.tar                            │          │
 │  └───────────────┬──────────────────────────────┘          │
 └──────────────────┼──────────────────────────────────────────┘
@@ -54,6 +55,7 @@ PHASE 2: Registry Deployment (Air-gapped Machine)
 │  │  │  elasticsearch:9.2.2                   │  │          │
 │  │  │  kibana:9.2.2                          │  │          │
 │  │  │  logstash:9.2.2                        │  │          │
+│  │  │  elastic-agent/elastic-agent:9.2.3     │  │          │
 │  │  └────────────────────────────────────────┘  │          │
 │  └───────────────┬──────────────────────────────┘          │
 └──────────────────┼──────────────────────────────────────────┘
@@ -74,6 +76,7 @@ PHASE 3: Kubernetes Deployment
 │  │    • Deploy Elasticsearch? (y/n)             │          │
 │  │    • Deploy Kibana? (y/n)                    │          │
 │  │    • Deploy Logstash? (y/n)                  │          │
+│  │    • Deploy Fleet Server? (y/n)              │          │
 │  │  → Deploys selected Helm charts              │          │
 │  │  → Waits for pods to be ready                │          │
 │  └───────────────┬──────────────────────────────┘          │

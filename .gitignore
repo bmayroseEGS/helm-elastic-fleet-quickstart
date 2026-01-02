@@ -1,5 +1,49 @@
-# This .gitignore is appropriate for repositories deployed to GitHub 
+# This .gitignore is appropriate for repositories deployed to GitHub
 
-
-
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Helm
+*.tgz
+charts/*.tgz
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Backup files
+*.bak
+*.orig
+*.rej
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Secrets (should never be committed)
+*.key
+*.pem
+*.crt
+secrets/
+credentials/

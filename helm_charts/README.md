@@ -1,8 +1,8 @@
 # Elastic Stack Helm Charts for Air-gapped Deployment
 
-This directory contains Helm charts for deploying the complete Elastic Stack (Elasticsearch, Kibana, and Logstash) to a Kubernetes cluster using images from a local container registry.
+This directory contains Helm charts for deploying the complete Elastic Stack (Elasticsearch, Kibana, Logstash, and Fleet Server) to a Kubernetes cluster using images from a local container registry.
 
-The `deploy.sh` script provides an interactive way to deploy all three components, or you can deploy each chart individually.
+The `deploy.sh` script provides an interactive way to deploy all components, or you can deploy each chart individually.
 
 ## Architecture
 
@@ -78,7 +78,8 @@ The script will:
   - Deploy Elasticsearch? (y/n)
   - Deploy Kibana? (y/n)
   - Deploy Logstash? (y/n)
-- Deploy selected components
+  - Deploy Fleet Server? (y/n)
+- Deploy selected components in the correct order
 - Wait for pods to be ready
 - Display status and access instructions
 
@@ -102,6 +103,12 @@ helm install kibana ./kibana \
 
 # Install Logstash
 helm install logstash ./logstash \
+  --namespace elastic \
+  --wait \
+  --timeout 5m
+
+# Install Fleet Server
+helm install fleet-server ./fleet-server \
   --namespace elastic \
   --wait \
   --timeout 5m
@@ -221,6 +228,39 @@ persistence:
 elasticsearchHosts: "http://elasticsearch-master:9200"
 ```
 
+### Fleet Server Configuration
+
+Edit [fleet-server/values.yaml](fleet-server/values.yaml):
+
+```yaml
+image:
+  registry: docker.elastic.co
+  repository: elastic-agent/elastic-agent
+  tag: "9.2.3"
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "512Mi"
+  limits:
+    cpu: "500m"
+    memory: "1Gi"
+
+elasticsearchHosts: "http://elasticsearch-master:9200"
+kibanaHosts: "http://kibana:5601"
+
+fleetServer:
+  enabled: true
+  port: 8220
+  insecure: true  # Disable TLS for testing
+
+persistence:
+  enabled: true
+  size: 10Gi
+```
+
 ## Accessing Services
 
 ### Elasticsearch
@@ -276,6 +316,23 @@ curl -X POST http://localhost:8080 \
   -H 'Content-Type: application/json' \
   -d '{"message":"test log entry"}'
 ```
+
+### Fleet Server
+
+**Port-forward Method:**
+```bash
+# Forward Fleet Server port
+kubectl port-forward -n elastic svc/fleet-server 8220:8220
+
+# Check Fleet Server status
+curl http://localhost:8220/api/status
+```
+
+**Access from Kibana:**
+Fleet Server is automatically configured in Kibana. Access Fleet management through Kibana UI:
+1. Open Kibana (http://localhost:5601)
+2. Navigate to Management > Fleet
+3. Fleet Server should show as connected
 
 ### LoadBalancer Method (Production)
 
@@ -495,14 +552,23 @@ helm_charts/
 │       ├── configmap.yaml
 │       └── NOTES.txt
 │
-└── logstash/
+├── logstash/
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+│       ├── statefulset.yaml
+│       ├── service.yaml
+│       ├── configmap-config.yaml
+│       ├── configmap-pipeline.yaml
+│       └── NOTES.txt
+│
+└── fleet-server/
     ├── Chart.yaml
     ├── values.yaml
     └── templates/
         ├── statefulset.yaml
         ├── service.yaml
-        ├── configmap-config.yaml
-        ├── configmap-pipeline.yaml
+        ├── configmap.yaml
         └── NOTES.txt
 ```
 
