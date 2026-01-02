@@ -439,6 +439,167 @@ clone_repository() {
 }
 
 ################################################################################
+# Install K3s (Lightweight Kubernetes)
+################################################################################
+install_k3s() {
+    print_header "Installing K3s (Kubernetes)"
+
+    # Check if k3s is already installed
+    if command -v k3s &> /dev/null; then
+        print_info "K3s is already installed: $(k3s --version | head -1)"
+        read -p "Reinstall K3s? (y/n): " reinstall
+        if [[ ! "$reinstall" =~ ^[Yy]$ ]]; then
+            print_info "Skipping K3s installation"
+            return 0
+        fi
+        print_info "Uninstalling existing K3s..."
+        sudo /usr/local/bin/k3s-uninstall.sh || true
+        sleep 2
+    fi
+
+    print_info "Installing K3s..."
+    echo ""
+    print_info "K3s will be installed with:"
+    echo "  - Built-in kubectl"
+    echo "  - Built-in containerd"
+    echo "  - Registry mirrors configuration for localhost:5000"
+    echo ""
+
+    # Install K3s with registry mirror configuration
+    print_info "Downloading and installing K3s..."
+    curl -sfL https://get.k3s.io | sh -s - \
+        --write-kubeconfig-mode 644 \
+        --disable traefik
+
+    # Wait for k3s to be ready
+    print_info "Waiting for K3s to start..."
+    sleep 5
+
+    # Check if k3s is running
+    if systemctl is-active --quiet k3s; then
+        print_info "✓ K3s installed and running: $(k3s --version | head -1)"
+
+        # Create kubectl symlink if it doesn't exist
+        if [ ! -f /usr/local/bin/kubectl ]; then
+            print_info "Creating kubectl symlink..."
+            sudo ln -s /usr/local/bin/k3s /usr/local/bin/kubectl
+        fi
+
+        print_info "✓ kubectl available: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"
+    else
+        print_error "K3s installation failed"
+        print_info "Check logs with: sudo journalctl -u k3s -n 50"
+        return 1
+    fi
+
+    # Configure registry mirror for localhost:5000
+    print_info "Configuring registry mirror for localhost:5000..."
+    sudo mkdir -p /etc/rancher/k3s
+
+    cat <<EOF | sudo tee /etc/rancher/k3s/registries.yaml > /dev/null
+mirrors:
+  "localhost:5000":
+    endpoint:
+      - "http://localhost:5000"
+  "docker.io":
+    endpoint:
+      - "https://registry-1.docker.io"
+configs:
+  "localhost:5000":
+    tls:
+      insecure_skip_verify: true
+EOF
+
+    print_info "✓ Registry mirror configured for localhost:5000"
+
+    # Restart k3s to apply registry configuration
+    print_info "Restarting K3s to apply registry configuration..."
+    sudo systemctl restart k3s
+    sleep 5
+
+    print_info "✓ K3s installation complete"
+}
+
+################################################################################
+# Install Helm
+################################################################################
+install_helm() {
+    print_header "Installing Helm"
+
+    # Check if helm is already installed
+    if command -v helm &> /dev/null; then
+        print_info "Helm is already installed: $(helm version --short)"
+        read -p "Reinstall Helm? (y/n): " reinstall
+        if [[ ! "$reinstall" =~ ^[Yy]$ ]]; then
+            print_info "Skipping Helm installation"
+            return 0
+        fi
+    fi
+
+    print_info "Downloading Helm installation script..."
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 -o get_helm.sh
+
+    print_info "Installing Helm..."
+    chmod 700 get_helm.sh
+    ./get_helm.sh
+
+    rm get_helm.sh
+
+    if command -v helm &> /dev/null; then
+        print_info "✓ Helm installed: $(helm version --short)"
+    else
+        print_error "Helm installation failed"
+        return 1
+    fi
+}
+
+################################################################################
+# Setup local Docker registry
+################################################################################
+setup_local_registry() {
+    print_header "Setting Up Local Docker Registry"
+
+    # Check if registry is already running
+    if docker ps --format '{{.Names}}' | grep -q "^registry$"; then
+        print_info "Docker registry is already running"
+        read -p "Restart registry? (y/n): " restart
+        if [[ "$restart" =~ ^[Yy]$ ]]; then
+            print_info "Stopping existing registry..."
+            docker stop registry
+            docker rm registry
+        else
+            print_info "Keeping existing registry"
+            return 0
+        fi
+    fi
+
+    print_info "Starting local Docker registry on port 5000..."
+    docker run -d \
+        --name registry \
+        --restart=always \
+        -p 5000:5000 \
+        -v registry-data:/var/lib/registry \
+        registry:2
+
+    # Wait for registry to be ready
+    sleep 3
+
+    if docker ps --format '{{.Names}}' | grep -q "^registry$"; then
+        print_info "✓ Docker registry running on localhost:5000"
+
+        # Test registry
+        if curl -s http://localhost:5000/v2/_catalog > /dev/null; then
+            print_info "✓ Registry is accessible"
+        else
+            print_warning "Registry started but may not be ready yet"
+        fi
+    else
+        print_error "Failed to start Docker registry"
+        return 1
+    fi
+}
+
+################################################################################
 # Configure kubectl/k3s access
 ################################################################################
 configure_kubectl() {
@@ -526,6 +687,39 @@ display_summary() {
         echo "  ✗ Git: Not installed"
     fi
 
+    # K3s/Kubernetes
+    if command -v k3s &> /dev/null; then
+        echo "  ✓ K3s: $(k3s --version | head -1)"
+        if systemctl is-active --quiet k3s; then
+            echo "    Status: Running"
+        else
+            echo "    Status: Not running"
+        fi
+    else
+        echo "  ✗ K3s: Not installed"
+    fi
+
+    # kubectl
+    if command -v kubectl &> /dev/null; then
+        echo "  ✓ kubectl: $(kubectl version --client --short 2>/dev/null || echo "Available")"
+    else
+        echo "  ✗ kubectl: Not installed"
+    fi
+
+    # Helm
+    if command -v helm &> /dev/null; then
+        echo "  ✓ Helm: $(helm version --short)"
+    else
+        echo "  ✗ Helm: Not installed"
+    fi
+
+    # Docker Registry
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^registry$"; then
+        echo "  ✓ Docker Registry: Running on localhost:5000"
+    else
+        echo "  ✗ Docker Registry: Not running"
+    fi
+
     # Additional tools
     local tools_status=""
     command -v curl &> /dev/null && tools_status+="curl "
@@ -563,14 +757,19 @@ display_summary() {
         echo ""
     fi
 
-    print_info "Next steps (after activating docker group):"
+    print_info "Next steps:"
     echo ""
-    echo "  1. Test Docker:"
-    echo "     docker run hello-world"
+    echo "  1. Deploy Elastic Stack:"
+    echo "     cd helm_charts"
+    echo "     ./deploy.sh"
     echo ""
-    echo "  2. For air-gapped deployment:"
-    echo "     cd helm-fleet-deployment/deployment_infrastructure"
-    echo "     ./collect-all.sh"
+    echo "  2. Configure Fleet (optional):"
+    echo "     cd deployment_infrastructure"
+    echo "     ./setup-fleet.sh"
+    echo ""
+    echo "  3. Access services (after deployment):"
+    echo "     kubectl port-forward -n elastic svc/kibana 5601:5601"
+    echo "     kubectl port-forward -n elastic svc/elasticsearch-master 9200:9200"
     echo ""
 }
 
@@ -578,8 +777,15 @@ display_summary() {
 # Main execution
 ################################################################################
 main() {
-    echo "Ubuntu Machine Setup Script"
-    echo "Sets up Docker, Git, and prerequisites"
+    echo "=========================================="
+    echo "Elastic Stack Quickstart Setup Script"
+    echo "=========================================="
+    echo "This script will install and configure:"
+    echo "  • Docker"
+    echo "  • K3s (Kubernetes)"
+    echo "  • kubectl"
+    echo "  • Helm"
+    echo "  • Local Docker Registry (localhost:5000)"
     echo ""
 
     check_os
@@ -589,6 +795,9 @@ main() {
     verify_docker
     configure_git
     install_additional_tools
+    install_k3s
+    install_helm
+    setup_local_registry
     configure_kubectl
     clone_repository
     display_summary
