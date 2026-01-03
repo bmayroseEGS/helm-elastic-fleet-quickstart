@@ -743,34 +743,109 @@ display_summary() {
     echo "    Then SSH/login again"
     echo ""
 
-    read -p "Do you want to activate Docker permissions now with 'newgrp docker'? (y/n): " activate_now
+    echo ""
+    print_warning "IMPORTANT: Docker registry setup requires Docker group membership!"
+    echo ""
+
+    read -p "Do you want to activate Docker permissions now and setup the registry? (y/n): " activate_now
     if [[ "$activate_now" =~ ^[Yy]$ ]]; then
         echo ""
-        print_info "Starting new shell with docker group..."
-        print_info "You can continue using Docker commands in this shell"
-        print_info "Type 'exit' to return to the previous shell"
+        print_info "Activating Docker group and continuing setup..."
         echo ""
-        exec newgrp docker
+
+        # Continue setup in a new shell with docker group active
+        newgrp docker <<'CONTINUE_SETUP'
+#!/bin/bash
+# Re-source the script functions for registry setup
+source "$(dirname "$0")/$(basename "$0")" functions_only 2>/dev/null || true
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+print_header() {
+    echo ""
+    echo "========================================"
+    echo "$1"
+    echo "========================================"
+}
+
+print_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header "Setting Up Local Docker Registry"
+
+# Check if registry is already running
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^registry$"; then
+    print_info "Docker registry is already running"
+else
+    print_info "Starting local Docker registry on port 5000..."
+    docker run -d \
+        --name registry \
+        --restart=always \
+        -p 5000:5000 \
+        -v registry-data:/var/lib/registry \
+        registry:2 2>&1
+
+    # Wait for registry to be ready
+    sleep 3
+
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^registry$"; then
+        print_info "✓ Docker registry running on localhost:5000"
+        if curl -s http://localhost:5000/v2/_catalog > /dev/null; then
+            print_info "✓ Registry is accessible"
+        fi
+    else
+        print_error "Failed to start Docker registry"
+    fi
+fi
+
+echo ""
+print_header "Setup Complete!"
+echo ""
+echo "Next steps:"
+echo ""
+echo "  1. Deploy Elastic Stack:"
+echo "     cd helm_charts"
+echo "     ./deploy.sh"
+echo ""
+echo "  2. Configure Fleet (optional):"
+echo "     cd deployment_infrastructure"
+echo "     ./setup-fleet.sh"
+echo ""
+echo "  3. Access services (after deployment):"
+echo "     kubectl port-forward -n elastic svc/kibana 5601:5601"
+echo "     kubectl port-forward -n elastic svc/elasticsearch-master 9200:9200"
+echo ""
+CONTINUE_SETUP
     else
         echo ""
-        print_warning "Remember to run 'newgrp docker' or logout/login before using Docker!"
+        print_warning "Skipping registry setup"
+        echo ""
+        print_info "To complete setup later:"
+        echo "  1. Activate Docker group:"
+        echo "     newgrp docker"
+        echo ""
+        echo "  2. Start registry:"
+        echo "     docker run -d --name registry --restart=always -p 5000:5000 registry:2"
+        echo ""
+        echo "  3. Continue with deployment:"
+        echo "     cd helm_charts"
+        echo "     ./deploy.sh"
         echo ""
     fi
-
-    print_info "Next steps:"
-    echo ""
-    echo "  1. Deploy Elastic Stack:"
-    echo "     cd helm_charts"
-    echo "     ./deploy.sh"
-    echo ""
-    echo "  2. Configure Fleet (optional):"
-    echo "     cd deployment_infrastructure"
-    echo "     ./setup-fleet.sh"
-    echo ""
-    echo "  3. Access services (after deployment):"
-    echo "     kubectl port-forward -n elastic svc/kibana 5601:5601"
-    echo "     kubectl port-forward -n elastic svc/elasticsearch-master 9200:9200"
-    echo ""
 }
 
 ################################################################################
@@ -797,12 +872,10 @@ main() {
     install_additional_tools
     install_k3s
     install_helm
-    setup_local_registry
     configure_kubectl
     clone_repository
     display_summary
-
-    print_info "Setup complete!"
+    # Note: setup_local_registry is now called within display_summary after docker group activation
 }
 
 # Run main
